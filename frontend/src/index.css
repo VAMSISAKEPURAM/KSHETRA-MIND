@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --primary: #133e2f;
+    --primary-light: #1b4d3e;
+    --accent: #2e7d32;
+    --accent-light: #e8f5e9;
+    --bg-page: #f8faf7;
+    --surface: #ffffff;
+    --text-primary: #192e20;
+    --text-muted: #526357;
+    --border-color: #e2e8e0;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', 'Noto Sans Telugu', 'Noto Sans Devanagari', 'Noto Sans Kannada', system-ui, sans-serif;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 0;
+    min-height: 100vh;
+  }
+
+  /* Accessible touch targets (48-56px) */
+  button, a, input, select, textarea {
+    touch-action: manipulation;
+  }
+}
+
+/* Text size modifier classes */
+.text-size-sm {
+  font-size: 15px;
+}
+.text-size-base {
+  font-size: 17px;
+}
+.text-size-lg {
+  font-size: 19px;
+}
+.text-size-xl {
+  font-size: 21px;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f0;
+}
+::-webkit-scrollbar-thumb {
+  background: #c3d1c4;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8fa592;
+}
