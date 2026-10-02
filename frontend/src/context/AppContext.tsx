@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Language, TextSize, Screen, FarmerProfile, Plot, FarmTask, FarmAlert, WeatherData, MandiItem } from '../types';
 import { translations, TranslationDict } from '../i18n/translations';
+import { API_BASE_URL } from '../config/api';
 
 interface AppContextType {
   language: Language;
@@ -236,7 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setFarmerState(profile);
     localStorage.setItem('km_farmer', JSON.stringify(profile));
     // Also try saving to backend
-    fetch('/api/farmer', {
+    fetch(`${API_BASE_URL}/api/farmer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profile)
@@ -262,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const task = updated.find(t => t.id === taskId);
     if (task) {
       try {
-        await fetch(`/api/tasks/${taskId}`, {
+        await fetch(`${API_BASE_URL}/api/tasks/${taskId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status: task.status })
@@ -279,7 +280,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAlertsState(updated);
     localStorage.setItem('km_alerts', JSON.stringify(updated));
     try {
-      await fetch(`/api/alerts/${alertId}/read`, { method: 'PUT' });
+      await fetch(`${API_BASE_URL}/api/alerts/${alertId}/read`, { method: 'PUT' });
     } catch (e) {
       console.warn('Updated alert locally:', e);
     }
@@ -288,7 +289,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Refresh Weather from backend
   const refreshWeather = async () => {
     try {
-      const res = await fetch(`/api/weather?district=${encodeURIComponent(farmer.district || 'Warangal')}&crop=${encodeURIComponent(farmer.current_crop || 'Chilli')}`);
+      const res = await fetch(`${API_BASE_URL}/api/weather?district=${encodeURIComponent(farmer.district || 'Warangal')}&crop=${encodeURIComponent(farmer.current_crop || 'Chilli')}`);
       if (res.ok) {
         const data = await res.json();
         setWeather(data);
@@ -306,7 +307,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     refreshWeather();
 
     // Fetch Mandi prices
-    fetch('/api/mandi-prices')
+    fetch(`${API_BASE_URL}/api/mandi-prices`)
       .then(res => res.json())
       .then(data => {
         if (data && data.markets) {

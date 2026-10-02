@@ -10,6 +10,7 @@ import {
   HelpCircle,
   ShieldAlert
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 export const SoilNutrientView: React.FC = () => {
   const { t, setCurrentScreen, farmer } = useApp();
@@ -25,7 +26,7 @@ export const SoilNutrientView: React.FC = () => {
   const handleEvaluate = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/soil/evaluate', {
+      const res = await fetch(`${API_BASE_URL}/api/soil/evaluate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

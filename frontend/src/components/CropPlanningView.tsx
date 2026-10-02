@@ -12,6 +12,7 @@ import {
   HelpCircle,
   Sparkles
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 export const CropPlanningView: React.FC = () => {
   const { t, setCurrentScreen, farmer } = useApp();
@@ -34,7 +35,7 @@ export const CropPlanningView: React.FC = () => {
   const handleEvaluate = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/crop-planning', {
+      const res = await fetch(`${API_BASE_URL}/api/crop-planning`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

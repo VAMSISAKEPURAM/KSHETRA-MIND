@@ -13,6 +13,7 @@ import {
   Sparkles,
   HelpCircle
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 export const CropHealthView: React.FC = () => {
   const { t, setCurrentScreen, farmer } = useApp();
@@ -66,7 +67,7 @@ export const CropHealthView: React.FC = () => {
       formData.append('crop', selectedCrop);
       if (presetNote) formData.append('notes', presetNote);
 
-      const res = await fetch('/api/crop-health/analyze', {
+      const res = await fetch(`${API_BASE_URL}/api/crop-health/analyze`, {
         method: 'POST',
         body: formData
       });

@@ -16,6 +16,7 @@ import {
   Cpu,
   Info
 } from 'lucide-react';
+import { API_BASE_URL } from '../config/api';
 
 interface ChatMessage {
   id: string;
@@ -139,7 +140,7 @@ export const AskAiView: React.FC = () => {
     setActiveOrchestration(['Master Agent', 'Intent Parser']);
 
     try {
-      const res = await fetch('/api/assistant/ask', {
+      const res = await fetch(`${API_BASE_URL}/api/assistant/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

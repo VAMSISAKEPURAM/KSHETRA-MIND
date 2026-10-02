@@ -35,6 +35,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def read_root():
+    return {
+        "status": "healthy",
+        "service": "KshetraMind AI Backend API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
 # --- Pydantic Models ---
 class FarmerCreate(BaseModel):
     id: Optional[str] = None
@@ -312,4 +321,5 @@ async def ask_master_agent(req: AssistantRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
