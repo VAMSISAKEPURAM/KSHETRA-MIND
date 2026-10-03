@@ -33,6 +33,10 @@ export const Header: React.FC = () => {
     { code: 'en', name: 'English', nativeName: 'English' },
     { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी' },
     { code: 'kn', name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
+    { code: 'ta', name: 'Tamil', nativeName: 'தமிழ்' },
+    { code: 'ml', name: 'Malayalam', nativeName: 'മലയാളം' },
+    { code: 'mr', name: 'Marathi', nativeName: 'मराठी' },
+    { code: 'bn', name: 'Bengali', nativeName: 'বাংলা' },
   ];
 
   const sizeOptions: { code: TextSize; label: string; sub: string }[] = [

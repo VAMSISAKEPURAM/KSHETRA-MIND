@@ -4,8 +4,9 @@ import uuid
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from agents.weather_agent import WeatherAgent
@@ -16,14 +17,16 @@ from agents.market_agent import MarketAgent
 from agents.farm_planning_agent import FarmPlanningAgent
 from agents.master_agent import MasterAgent
 from database.db import get_connection, init_db
+from services import LanguageService, STTService, TTSService, ConversationService, LLMService
 
-# Initialize database
+# Initialize database and tables
 init_db()
+ConversationService.init_table()
 
 app = FastAPI(
     title="KshetraMind AI Backend API",
-    description="Multi-agent agriculture platform backend connecting Weather, Soil, Crop Health, Crop Planning, Market Intelligence, and Farm Planning.",
-    version="1.0.0"
+    description="Multi-agent agriculture platform backend connecting Weather, Soil, Crop Health, Crop Planning, Market Intelligence, and Farm Planning with Multilingual Voice Assistant.",
+    version="1.1.0"
 )
 
 # CORS middleware for local frontend dev
@@ -40,7 +43,9 @@ def read_root():
     return {
         "status": "healthy",
         "service": "KshetraMind AI Backend API",
-        "version": "1.0.0",
+        "version": "1.1.0",
+        "voice_assistant": "multilingual-whisper-neural-tts",
+        "supported_languages": [l["code"] for l in LanguageService.get_supported_languages()],
         "docs": "/docs"
     }
 
@@ -86,9 +91,27 @@ class CropPlanRequest(BaseModel):
 
 class AssistantRequest(BaseModel):
     query: str
-    language: str = "te"
+    language: Optional[str] = "auto"
     farmer_id: Optional[str] = "farmer-1"
     image_base64: Optional[str] = None
+    synthesize_voice: Optional[bool] = False
+
+class VoiceSynthesisRequest(BaseModel):
+    text: str
+    language: Optional[str] = "te"
+    gender: Optional[str] = "female"
+    rate: Optional[str] = "+0%"
+    pitch: Optional[str] = "+0Hz"
+
+class VoiceAssistantJSONRequest(BaseModel):
+    query: str
+    language: Optional[str] = "auto"
+    farmer_id: Optional[str] = "farmer-1"
+    synthesize_voice: Optional[bool] = True
+
+class LLMConfigRequest(BaseModel):
+    api_key: Optional[str] = None
+    model: Optional[str] = "llama-3.3-70b-versatile"
 
 class TaskUpdate(BaseModel):
     status: str # pending / completed
@@ -100,7 +123,7 @@ def health_check():
         "status": "healthy",
         "service": "KshetraMind AI Backend",
         "timestamp": datetime.now().isoformat(),
-        "languages_supported": ["te", "en", "hi", "kn"]
+        "languages_supported": [l["code"] for l in LanguageService.get_supported_languages()]
     }
 
 # --- Farmer Profile Endpoints ---
@@ -285,9 +308,265 @@ def mark_alert_read(alert_id: str):
     conn.close()
     return {"status": "success"}
 
-# --- Central Master Agent / Assistant Endpoint ---
+# =========================================================================
+# --- Multilingual Voice Assistant & Speech Endpoints ---
+# =========================================================================
+
+@app.get("/api/voice/languages")
+def get_voice_languages():
+    """Returns list of supported Indian languages with native scripts and TTS voice profiles."""
+    return {
+        "status": "success",
+        "languages": LanguageService.get_supported_languages()
+    }
+
+@app.post("/api/voice/transcribe")
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    preferred_language: Optional[str] = Form("auto")
+):
+    """
+    Speech-to-Text using OpenAI Whisper model.
+    Converts user microphone speech to text and automatically identifies the Indian language.
+    """
+    try:
+        content = await audio.read()
+        res = await STTService.transcribe(
+            audio_data=content,
+            filename=audio.filename or "recording.webm",
+            preferred_language=preferred_language if preferred_language != "auto" else None
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio transcription error: {str(e)}")
+
+@app.post("/api/voice/synthesize")
+async def synthesize_speech(req: VoiceSynthesisRequest):
+    """
+    Text-to-Speech using high-fidelity Indian neural voices (Edge TTS / Sarvam AI).
+    Generates natural audio stream or base64 MP3 for immediate browser playback.
+    """
+    try:
+        res = await TTSService.synthesize(
+            text=req.text,
+            language=req.language or "te",
+            gender=req.gender or "female",
+            rate=req.rate or "+0%",
+            pitch=req.pitch or "+0Hz"
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Speech synthesis error: {str(e)}")
+
+@app.get("/api/voice/audio-stream")
+async def stream_speech(
+    text: str = Query(...),
+    language: str = Query("te"),
+    gender: str = Query("female")
+):
+    """
+    Direct audio/mpeg binary stream for `<audio>` tags or instant direct streaming.
+    """
+    try:
+        res = await TTSService.synthesize(text=text, language=language, gender=gender)
+        if res.get("status") == "success" and "audio_bytes" in res:
+            return Response(content=res["audio_bytes"], media_type="audio/mpeg")
+        raise HTTPException(status_code=500, detail=res.get("message", "TTS failed"))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Streaming error: {str(e)}")
+
+@app.post("/api/voice/assistant")
+async def voice_assistant_pipeline(
+    audio: Optional[UploadFile] = File(None),
+    query: Optional[str] = Form(None),
+    language: Optional[str] = Form("auto"),
+    farmer_id: Optional[str] = Form("farmer-1"),
+    synthesize_voice: Optional[bool] = Form(True)
+):
+    """
+    Complete end-to-end Multilingual Voice Assistant Pipeline:
+    1. Speech Input: Transcribes audio with Whisper (or accepts query text).
+    2. Language Detection: Automatically detects Indian language (Telugu, Hindi, Tamil, Kannada, Malayalam, Marathi, Bengali, English).
+    3. AI Response Generation: MasterAgent orchestrates Weather, Soil, Crop Health, Market & Farm planning with multi-turn history.
+    4. Voice Output: Neural TTS speaks back in the detected language.
+    5. Context Persistence: Stores dialogue turn in SQLite database.
+    """
+    farmer_id_clean = farmer_id or "farmer-1"
+    transcribed_text = ""
+    detected_lang = language or "auto"
+    confidence = 1.0
+
+    # 1. Voice Input / Transcription
+    if audio:
+        try:
+            content = await audio.read()
+            stt_res = await STTService.transcribe(
+                audio_data=content,
+                filename=audio.filename or "recording.webm",
+                preferred_language=language if language != "auto" else None
+            )
+            if stt_res.get("status") == "success":
+                transcribed_text = stt_res.get("text", "")
+                detected_lang = stt_res.get("detected_language", "te")
+                confidence = stt_res.get("confidence", 0.85)
+            else:
+                return {
+                    "status": "error",
+                    "error_stage": "stt",
+                    "message": stt_res.get("message", "Speech recognition failed"),
+                    "detected_language": detected_lang
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_stage": "stt",
+                "message": f"Microphone audio processing failed: {str(e)}",
+                "detected_language": detected_lang
+            }
+    elif query:
+        transcribed_text = query.strip()
+        if detected_lang == "auto" or not detected_lang:
+            detected_lang = LanguageService.detect_language_from_text(transcribed_text, fallback="te")
+    else:
+        return {
+            "status": "error",
+            "message": "Neither audio file nor query text provided"
+        }
+
+    if not transcribed_text:
+        return {
+            "status": "error",
+            "error_stage": "stt",
+            "message": "No audible speech detected. Please speak clearly into your microphone.",
+            "detected_language": detected_lang
+        }
+
+    # Normalize detected language code
+    normalized_lang = LanguageService.normalize_language_code(detected_lang)
+    lang_info = LanguageService.get_language_info(normalized_lang)
+
+    # 2. Fetch Farmer Context
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM farmers WHERE id = ?", (farmer_id_clean,))
+    row = cursor.fetchone()
+    farmer_ctx = dict(row) if row else {
+        "name": "Ramesh Rao",
+        "district": "Warangal",
+        "crop": "Chilli",
+        "water_source": "Borewell & Drip",
+        "soil_type": "Black Cotton Soil"
+    }
+
+    cursor.execute("SELECT current_crop, soil_type, water_source FROM plots WHERE farmer_id = ? LIMIT 1", (farmer_id_clean,))
+    plot_row = cursor.fetchone()
+    if plot_row:
+        farmer_ctx["crop"] = plot_row["current_crop"]
+        farmer_ctx["soil_type"] = plot_row["soil_type"]
+        farmer_ctx["water_source"] = plot_row["water_source"]
+    conn.close()
+
+    # 3. Retrieve recent conversation history for multi-turn context
+    history_context = ConversationService.get_recent_context(farmer_id=farmer_id_clean, limit=4)
+
+    # 4. AI Response Generation (MasterAgent)
+    agent_result = await MasterAgent.process_farmer_query(
+        query=transcribed_text,
+        farmer_context=farmer_ctx,
+        language=normalized_lang,
+        conversation_history=history_context
+    )
+
+    structured_resp = agent_result.get("response", {})
+    spoken_summary = agent_result.get("spoken_summary", "")
+    agents_invoked = agent_result.get("agents_invoked", [])
+
+    # 5. Voice Output (TTS)
+    audio_base64 = None
+    if synthesize_voice and spoken_summary:
+        tts_res = await TTSService.synthesize(
+            text=spoken_summary,
+            language=normalized_lang
+        )
+        if tts_res.get("status") == "success":
+            audio_base64 = tts_res.get("audio_base64")
+
+    # 6. Save Turn in Conversation History
+    try:
+        ConversationService.add_turn(
+            farmer_id=farmer_id_clean,
+            user_text=transcribed_text,
+            agent_structured=structured_resp,
+            summary_text=spoken_summary,
+            language=normalized_lang,
+            agents_invoked=agents_invoked
+        )
+    except Exception as e:
+        print(f"Warning: Failed to persist conversation history: {e}")
+
+    return {
+        "status": "success",
+        "transcription": transcribed_text,
+        "detected_language": normalized_lang,
+        "language_name": lang_info["name"],
+        "native_name": lang_info["native_name"],
+        "confidence": confidence,
+        "structured_response": structured_resp,
+        "spoken_summary": spoken_summary,
+        "audio_base64": audio_base64,
+        "agents_invoked": agents_invoked,
+        "reasoning_engine": agent_result.get("reasoning_engine", "KshetraMind Multi-agent Engine"),
+        "timestamp": datetime.now().strftime("%I:%M %p")
+    }
+
+# --- Groq LLM Reasoning Endpoints ---
+@app.get("/api/llm/status")
+def get_llm_status():
+    return LLMService.get_status()
+
+@app.post("/api/llm/configure")
+async def configure_llm(req: LLMConfigRequest):
+    if not req.api_key or not req.api_key.strip():
+        raise HTTPException(status_code=400, detail="Groq API key cannot be empty.")
+    
+    LLMService.set_api_key(req.api_key, req.model)
+    test_res = await LLMService.test_connection(req.api_key, req.model)
+    return {
+        "status": "success" if test_res["success"] else "saved_with_warning",
+        "message": "Groq LLM verified & connected!" if test_res["success"] else f"Key saved, but test failed: {test_res.get('error')}",
+        "test_result": test_res,
+        "llm_status": LLMService.get_status()
+    }
+
+@app.post("/api/llm/test")
+async def test_llm_connection(req: Optional[LLMConfigRequest] = None):
+    key = req.api_key if req else None
+    model = req.model if req else None
+    return await LLMService.test_connection(api_key=key, model=model)
+
+# --- Voice Conversation History Endpoints ---
+@app.get("/api/voice/history/{farmer_id}")
+def get_voice_history(farmer_id: str = "farmer-1"):
+    return {
+        "status": "success",
+        "farmer_id": farmer_id,
+        "history": ConversationService.get_history(farmer_id=farmer_id, limit=40)
+    }
+
+@app.delete("/api/voice/history/{farmer_id}")
+def clear_voice_history(farmer_id: str = "farmer-1"):
+    ConversationService.clear_history(farmer_id=farmer_id)
+    return {"status": "success", "message": f"Conversation history cleared for {farmer_id}"}
+
+# --- Central Master Agent / Assistant Endpoint (Compatible with Existing JSON Calls) ---
 @app.post("/api/assistant/ask")
 async def ask_master_agent(req: AssistantRequest):
+    # Determine language
+    lang = req.language
+    if not lang or lang == "auto":
+        lang = LanguageService.detect_language_from_text(req.query, fallback="te")
+    normalized_lang = LanguageService.normalize_language_code(lang)
+
     # Fetch farmer context
     conn = get_connection()
     cursor = conn.cursor()
@@ -311,12 +590,37 @@ async def ask_master_agent(req: AssistantRequest):
         
     conn.close()
 
+    history = ConversationService.get_recent_context(farmer_id=req.farmer_id or "farmer-1", limit=4)
+
     result = await MasterAgent.process_farmer_query(
         query=req.query,
         farmer_context=farmer_ctx,
-        language=req.language or "te",
-        image_base64=req.image_base64
+        language=normalized_lang,
+        image_base64=req.image_base64,
+        conversation_history=history
     )
+
+    audio_base64 = None
+    if req.synthesize_voice and result.get("spoken_summary"):
+        tts_res = await TTSService.synthesize(text=result["spoken_summary"], language=normalized_lang)
+        if tts_res.get("status") == "success":
+            audio_base64 = tts_res.get("audio_base64")
+
+    # Persist in conversation history
+    try:
+        ConversationService.add_turn(
+            farmer_id=req.farmer_id or "farmer-1",
+            user_text=req.query,
+            agent_structured=result.get("response", {}),
+            summary_text=result.get("spoken_summary", ""),
+            language=normalized_lang,
+            agents_invoked=result.get("agents_invoked", [])
+        )
+    except Exception:
+        pass
+
+    result["detected_language"] = normalized_lang
+    result["audio_base64"] = audio_base64
     return result
 
 if __name__ == "__main__":

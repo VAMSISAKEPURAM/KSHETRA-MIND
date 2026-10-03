@@ -1,4 +1,4 @@
-export type Language = 'te' | 'en' | 'hi' | 'kn';
+export type Language = 'te' | 'en' | 'hi' | 'kn' | 'ta' | 'ml' | 'mr' | 'bn';
 
 export type TextSize = 'sm' | 'base' | 'lg' | 'xl';
 
@@ -13,6 +13,47 @@ export type Screen =
   | 'soil'
   | 'market'
   | 'alerts';
+
+export interface VoiceAssistantResponse {
+  status: 'success' | 'error';
+  transcription?: string;
+  detected_language?: Language;
+  language_name?: string;
+  native_name?: string;
+  confidence?: number;
+  structured_response?: {
+    section_1_understood: string;
+    section_2_available_info: string;
+    section_3_next_actions: string;
+    section_4_why_matters: string;
+    section_5_important_caution: string;
+  };
+  spoken_summary?: string;
+  audio_base64?: string;
+  agents_invoked?: string[];
+  reasoning_engine?: string;
+  timestamp?: string;
+  message?: string;
+}
+
+export interface LLMModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  recommended: boolean;
+  speed: string;
+  context_window: number;
+}
+
+export interface LLMStatus {
+  provider: string;
+  is_available: boolean;
+  active_model: string;
+  has_api_key: boolean;
+  masked_key: string | null;
+  supported_models: LLMModelInfo[];
+  fallback_engine: string;
+}
 
 export interface FarmerProfile {
   id: string;

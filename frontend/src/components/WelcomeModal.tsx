@@ -11,6 +11,10 @@ export const WelcomeModal: React.FC = () => {
     { code: 'en', name: 'English', script: 'English', greeting: 'Welcome' },
     { code: 'hi', name: 'Hindi', script: 'हिन्दी', greeting: 'नमस्ते' },
     { code: 'kn', name: 'Kannada', script: 'ಕನ್ನಡ', greeting: 'ನಮಸ್ಕಾರ' },
+    { code: 'ta', name: 'Tamil', script: 'தமிழ்', greeting: 'வணக்கம்' },
+    { code: 'ml', name: 'Malayalam', script: 'മലയാളം', greeting: 'സ്വാഗതം' },
+    { code: 'mr', name: 'Marathi', script: 'मराठी', greeting: 'नमस्कार' },
+    { code: 'bn', name: 'Bengali', script: 'বাংলা', greeting: 'নমস্কার' },
   ];
 
   const handleContinue = () => {
